@@ -2,21 +2,22 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
-typedef struct HeapChunk {
+typedef struct ChunkData {
     uint32_t size;
     bool in_use;
-    struct HeapChunk *next;
-} HeapChunk;
+    struct ChunkData *next;
+} ChunkData;
 
-typedef struct Heap {
+typedef struct HeapData {
     uint32_t available;
-    HeapChunk *head;
-} Heap;
+    ChunkData *head;
+} HeapData;
 
-int init_heap(Heap *heap) {
+int init_heap(HeapData *heap) {
 
     uint32_t page_size = getpagesize();
 
@@ -29,44 +30,101 @@ int init_heap(Heap *heap) {
     }
 
     // Build a starting heap chunk out of the memory map
-    HeapChunk *head = (HeapChunk *)map;
-    head->size = page_size - sizeof(HeapChunk);
+    ChunkData *head = (ChunkData *)map;
+    head->size = page_size - sizeof(ChunkData);
     head->in_use = false;
     head->next = NULL;
 
     heap->head = head;
+    heap->available = 100000; // TODO: Calculate availability
 
     return 0;
 }
 
-void *heap_alloc(Heap *heap, uint32_t size) {
+ChunkData *truncate_chunk(ChunkData *chunk, uint32_t new_size) {
 
-    // Traverse till we find a free chunk
-    HeapChunk chunk = *heap->head;
-    while (chunk.in_use) {
-        if (chunk.next == NULL) {
-            fprintf(stderr, "aint it chief");
-            return (void *)-1;
-        }
-        chunk = *chunk.next;
-    }
-
-    if (chunk.size < size) {
-        fprintf(stderr, "too big");
+    if (new_size >= chunk->size + sizeof(ChunkData)) {
+        fprintf(stderr, "Invalid size for truncation: %d, chunk size: %d\n",
+                new_size, chunk->size);
         return (void *)-1;
     }
 
-    // Todo: resize the chunk so that we hand them the actual amount they want
+    printf("truncating:\n");
+
+    // The chunk must be truncated down to a
+    // multiple of the size of the metadata
+    uint32_t truncated_size =
+        new_size + (sizeof(ChunkData) - (new_size % sizeof(ChunkData)));
+
+    printf("    truncated_size: %iu\n", truncated_size);
+
+    uint32_t leftover_space = chunk->size - truncated_size;
+
+    printf("    leftover_space: %iu\n", leftover_space);
+    printf("new chunk @ %p:\n    size: %lu\n",
+           chunk + sizeof(ChunkData) + truncated_size,
+           leftover_space - sizeof(ChunkData));
+
+    chunk->size = truncated_size;
+
+    // Create a new chunk at the end of the old chunk
+    ChunkData *new_chunk =
+        (ChunkData *)((char *)chunk + sizeof(ChunkData) + chunk->size);
+    new_chunk->size = leftover_space - sizeof(ChunkData);
+    new_chunk->in_use = false;
+    new_chunk->next = chunk->next;
+
+    chunk->next = new_chunk;
+
+    return new_chunk;
 }
 
-void heap_free(Heap *heap, void *ptr) {}
+void *heap_alloc(HeapData *heap, uint32_t size) {
+
+    // Traverse till we find a free chunk that is big enough
+    ChunkData *free_chunk = heap->head;
+    while (free_chunk->in_use || free_chunk->size <= size) {
+        if (free_chunk->next == NULL) {
+            fprintf(stderr, "Inadequate amount of memory available\n");
+            return (void *)-1;
+        }
+        free_chunk = free_chunk->next;
+    }
+
+    ChunkData *new_chunk = truncate_chunk(free_chunk, size);
+    if (new_chunk == (void *)-1) {
+        fprintf(stderr, "Invalid chunk truncation\n");
+        return (void *)-1;
+    }
+
+    free_chunk->in_use = true;
+
+    printf("chunk alloc @ %p:\n    size: %iu\n    in_use: %d\n    next: %p\n",
+           free_chunk, free_chunk->size, free_chunk->in_use, free_chunk->next);
+
+    return free_chunk + sizeof(ChunkData);
+}
+
+void heap_free(HeapData *heap, void *ptr) {
+
+    // TODO: Implement
+}
 
 int main(int argc, char *argv[]) {
 
-    Heap heap = {0};
+    HeapData heap = {0};
     if (init_heap(&heap)) {
         return EXIT_FAILURE;
     }
+
+    char *string_1 = heap_alloc(&heap, 100);
+    strcat(string_1, "hi there");
+
+    char *string_2 = heap_alloc(&heap, 150);
+    strcat(string_2, "hello");
+
+    printf("%s\n", string_1);
+    printf("%s\n", string_2);
 
     return EXIT_SUCCESS;
 }
