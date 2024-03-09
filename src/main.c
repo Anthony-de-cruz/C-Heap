@@ -49,21 +49,11 @@ ChunkData *truncate_chunk(ChunkData *chunk, uint32_t new_size) {
         return (void *)-1;
     }
 
-    printf("truncating:\n");
-
     // The chunk must be truncated down to a
     // multiple of the size of the metadata
     uint32_t truncated_size =
         new_size + (sizeof(ChunkData) - (new_size % sizeof(ChunkData)));
-
-    printf("    truncated_size: %iu\n", truncated_size);
-
     uint32_t leftover_space = chunk->size - truncated_size;
-
-    printf("    leftover_space: %iu\n", leftover_space);
-    printf("new chunk @ %p:\n    size: %lu\n",
-           chunk + sizeof(ChunkData) + truncated_size,
-           leftover_space - sizeof(ChunkData));
 
     chunk->size = truncated_size;
 
@@ -98,9 +88,6 @@ void *heap_alloc(HeapData *heap, uint32_t size) {
     }
 
     free_chunk->in_use = true;
-
-    printf("chunk alloc @ %p:\n    size: %iu\n    in_use: %d\n    next: %p\n",
-           free_chunk, free_chunk->size, free_chunk->in_use, free_chunk->next);
 
     return free_chunk + sizeof(ChunkData);
 }
