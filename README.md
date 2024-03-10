@@ -4,8 +4,8 @@ An implementation of a heap, along with functions `malloc()` and `free()`, in C.
 ### Build
 Build with:
 ```sh
-cmake --build ./build
 cmake -B ./build
+cmake --build ./build
 ```
 Run with:
 ```sh
