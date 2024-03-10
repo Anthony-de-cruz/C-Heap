@@ -11,12 +11,36 @@ typedef struct ChunkData {
     uint32_t size;
     bool in_use;
     struct ChunkData *next;
+    struct ChunkData *prev;
 } ChunkData;
 
 typedef struct HeapData {
     uint32_t available;
     ChunkData *head;
 } HeapData;
+
+void print_void_data(FILE *restrict stream, void *ptr) {
+    ChunkData *chunk = (ChunkData *)(char *)ptr - sizeof(ChunkData);
+    fprintf(stream,
+            "chunk @ %p\n    size: %iu\n    in use: %d\n    next: %p\n    "
+            "prev: %p\n",
+            chunk, chunk->size, chunk->in_use, chunk->next, chunk->prev);
+}
+
+void print_chunk_data(FILE *restrict stream, ChunkData *chunk) {
+    fprintf(stream,
+            "chunk @ %p\n    size: %iu\n    in use: %d\n    next: %p\n    "
+            "prev: %p\n",
+            chunk, chunk->size, chunk->in_use, chunk->next, chunk->prev);
+}
+
+void print_heap_chunks(FILE *restrict stream, HeapData *heap) {
+    ChunkData *chunk = heap->head;
+    do {
+        print_chunk_data(stdout, chunk);
+        chunk = chunk->next;
+    } while (chunk != heap->head);
+}
 
 int heap_init(HeapData *heap) {
     uint32_t page_size = getpagesize();
@@ -33,7 +57,8 @@ int heap_init(HeapData *heap) {
     ChunkData *head = (ChunkData *)map;
     head->size = page_size - sizeof(ChunkData);
     head->in_use = false;
-    head->next = NULL;
+    head->next = head;
+    head->prev = head;
 
     heap->head = head;
     heap->available = 100000; // TODO: Calculate availability
@@ -73,8 +98,13 @@ ChunkData *chunk_truncate(ChunkData *chunk, uint32_t new_size) {
     new_chunk->size = leftover_space - data_size;
     new_chunk->in_use = false;
     new_chunk->next = chunk->next;
+    new_chunk->prev = chunk;
 
     chunk->next = new_chunk;
+
+    if (chunk->prev == chunk) {
+        chunk->prev = new_chunk;
+    }
 
     return new_chunk;
 }
@@ -93,30 +123,37 @@ void *chunk_alloc(HeapData *heap, uint32_t size) {
     ChunkData *new_chunk = chunk_truncate(free_chunk, size);
     if (new_chunk == (void *)-1) {
         fprintf(stderr, "Invalid chunk truncation\n");
+        print_chunk_data(stderr, new_chunk);
         return (void *)-1;
     }
 
     free_chunk->in_use = true;
 
+    fprintf(stdout, "alloc @ %p\n", free_chunk);
     return free_chunk + sizeof(ChunkData);
 }
 
-void coalesce_chunk(HeapData *heap, ChunkData *chunk) {
-
-    // TODO: Implement
+void coalesce_chunk(ChunkData *chunk) {
+    // Scan the prev chunk and coalesce if not in use
+    if (!chunk->prev->in_use) {
+        chunk->prev->size += chunk->size + sizeof(ChunkData);
+        chunk->prev->next = chunk->next;
+        chunk = chunk->prev;
+    }
+    // Scan the next chunk and coalesce if not in use
+    if (!chunk->next->in_use) {
+        chunk->size += chunk->next->size + sizeof(ChunkData);
+        chunk->next = chunk->next->next;
+    }
 }
 
-void chunk_free(HeapData *heap, void *ptr) {
+void chunk_free(void *ptr) {
     ChunkData *chunk = (ChunkData *)(char *)ptr - sizeof(ChunkData);
     chunk->in_use = false;
 
-    coalesce_chunk(heap, chunk);
-}
+    fprintf(stdout, "free @ %p\n", chunk);
 
-void print_chunk_data(FILE *restrict stream, void *ptr) {
-    ChunkData *chunk = (ChunkData *)(char *)ptr - sizeof(ChunkData);
-    fprintf(stream, "chunk @ %p\n    size: %iu\n    in use: %d\n    next: %p\n",
-            chunk, chunk->size, chunk->in_use, chunk->next);
+    coalesce_chunk(chunk);
 }
 
 int main(int argc, char *argv[]) {
@@ -127,23 +164,19 @@ int main(int argc, char *argv[]) {
 
     char *string_1 = chunk_alloc(&heap, 100);
     strcat(string_1, "hi there");
-    print_chunk_data(stdout, string_1);
 
     char *string_2 = chunk_alloc(&heap, 150);
     strcat(string_2, "hello");
-    print_chunk_data(stdout, string_2);
 
     char *string_3 = chunk_alloc(&heap, sizeof(char) * 10);
     strcat(string_3, "testings");
-    print_chunk_data(stdout, string_3);
 
-    printf("%s\n", string_1);
-    printf("%s\n", string_2);
-    printf("%s\n", string_3);
+    print_heap_chunks(stdout, &heap);
 
-    chunk_free(&heap, string_2);
+    chunk_free(string_2);
+    chunk_free(string_3);
 
-    print_chunk_data(stdout, string_2);
+    print_heap_chunks(stdout, &heap);
 
     if (heap_deconstruct(&heap)) {
         return EXIT_FAILURE;
