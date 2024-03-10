@@ -7,11 +7,14 @@ Build with:
 cmake -B ./build
 cmake --build ./build
 ```
+![[readme_image_build.png]]
+
 Run with:
 ```sh
 ./build/C-Heap
 ```
 
+![[readme_image_demo.png]]
 ### Project
 - [x] Complete initial implementation
 - [ ] Refactor code documentation
