@@ -11,12 +11,36 @@ typedef struct ChunkData {
     uint32_t size;
     bool in_use;
     struct ChunkData *next;
+    struct ChunkData *prev;
 } ChunkData;
 
 typedef struct HeapData {
     uint32_t available;
     ChunkData *head;
 } HeapData;
+
+void print_void_data(FILE *restrict stream, void *ptr) {
+    ChunkData *chunk = (ChunkData *)(char *)ptr - sizeof(ChunkData);
+    fprintf(stream,
+            "chunk @ %p\n    size: %iu\n    in use: %d\n    next: %p\n    "
+            "prev: %p\n",
+            chunk, chunk->size, chunk->in_use, chunk->next, chunk->prev);
+}
+
+void print_chunk_data(FILE *restrict stream, ChunkData *chunk) {
+    fprintf(stream,
+            "chunk @ %p\n    size: %iu\n    in use: %d\n    next: %p\n    "
+            "prev: %p\n",
+            chunk, chunk->size, chunk->in_use, chunk->next, chunk->prev);
+}
+
+void print_heap_chunks(FILE *restrict stream, HeapData *heap) {
+    ChunkData *chunk = heap->head;
+    do {
+        print_chunk_data(stdout, chunk);
+        chunk = chunk->next;
+    } while (chunk != heap->head);
+}
 
 int heap_init(HeapData *heap) {
     uint32_t page_size = getpagesize();
@@ -33,7 +57,8 @@ int heap_init(HeapData *heap) {
     ChunkData *head = (ChunkData *)map;
     head->size = page_size - sizeof(ChunkData);
     head->in_use = false;
-    head->next = NULL;
+    head->next = head;
+    head->prev = head;
 
     heap->head = head;
     heap->available = 100000; // TODO: Calculate availability
@@ -73,8 +98,13 @@ ChunkData *chunk_truncate(ChunkData *chunk, uint32_t new_size) {
     new_chunk->size = leftover_space - data_size;
     new_chunk->in_use = false;
     new_chunk->next = chunk->next;
+    new_chunk->prev = chunk;
 
     chunk->next = new_chunk;
+
+    if (chunk->prev == chunk) {
+        chunk->prev = new_chunk;
+    }
 
     return new_chunk;
 }
