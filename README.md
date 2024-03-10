@@ -13,7 +13,8 @@ Run with:
 ```
 
 ### Project
-- [ ] Complete implementation
+- [x] Complete initial implementation
 - [ ] Refactor code documentation
+- [ ] Optimise code
 - [ ] Provide documentation on how the system works
 
