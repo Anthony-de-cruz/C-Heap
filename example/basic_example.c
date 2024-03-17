@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "heap.h"
+#include "../include/heap.h"
 
 int main(int argc, char *argv[]) {
     HeapData heap = {0};
